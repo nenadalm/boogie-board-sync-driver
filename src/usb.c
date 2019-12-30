@@ -5,6 +5,16 @@
 #include <libevdev/libevdev-uinput.h>
 #include <signal.h>
 
+#define ERASE_BTN_FLAG 0x01 << 7
+#define SAVE_BTN_FLAG 0x01 << 6
+#define ERASE_COMPLETED_FLAG 0x01 << 5
+#define SAVE_COMPLETED_FLAG 0x01 << 4
+#define STYLUS_HOVER_FLAG 0x01 << 2
+#define STYLUS_BTN_FLAG 0x01 << 1
+#define STYLUS_TOUCH_FLAG 0x01
+#define MAX_X 19780
+#define MAX_Y 13442
+
 uint8_t should_exit = 0;
 
 
@@ -28,7 +38,7 @@ int main() {
         return -1;
     }
 
-    libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);
+    /*libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);*/
 
     libusb_device_handle* board_handle = libusb_open_device_with_vid_pid(NULL, 0x2914, 0x0100);
     if (board_handle == NULL) {
@@ -71,24 +81,25 @@ int main() {
     libevdev_set_name(dev, "BoogieBoard Sync");
 
     libevdev_enable_event_type(dev, EV_KEY);
+    libevdev_enable_event_code(dev, EV_KEY, BTN_TOOL_PEN, NULL);
     libevdev_enable_event_code(dev, EV_KEY, BTN_TOUCH, NULL);
-    libevdev_enable_event_code(dev, EV_KEY, BTN_STYLUS2, NULL);
+    libevdev_enable_event_code(dev, EV_KEY, BTN_STYLUS, NULL);
 
     struct input_absinfo abs_info_x;
     abs_info_x.value = 0;
     abs_info_x.minimum = 0;
-    abs_info_x.maximum = 19780;
+    abs_info_x.maximum = MAX_X;
     abs_info_x.fuzz = 0;
     abs_info_x.flat = 0;
-    abs_info_x.resolution = 0;
+    abs_info_x.resolution = 1;
 
     struct input_absinfo abs_info_y;
     abs_info_y.value = 0;
     abs_info_y.minimum = 0;
-    abs_info_y.maximum = 13442;
+    abs_info_y.maximum = MAX_Y;
     abs_info_y.fuzz = 0;
     abs_info_y.flat = 0;
-    abs_info_y.resolution = 0;
+    abs_info_y.resolution = 1;
 
     struct input_absinfo abs_info_p;
     abs_info_p.value = 0;
@@ -96,12 +107,14 @@ int main() {
     abs_info_p.maximum = 255;
     abs_info_p.fuzz = 0;
     abs_info_p.flat = 0;
-    abs_info_p.resolution = 0;
+    abs_info_p.resolution = 1;
 
     libevdev_enable_event_type(dev, EV_ABS);
     libevdev_enable_event_code(dev, EV_ABS, ABS_PRESSURE, &abs_info_p);
     libevdev_enable_event_code(dev, EV_ABS, ABS_X, &abs_info_x);
     libevdev_enable_event_code(dev, EV_ABS, ABS_Y, &abs_info_y);
+
+    libevdev_enable_property(dev, INPUT_PROP_POINTER);
 
     struct libevdev_uinput* uidev;
     if (libevdev_uinput_create_from_device(dev, LIBEVDEV_UINPUT_OPEN_MANAGED, &uidev) != 0) {
@@ -125,17 +138,25 @@ int main() {
             continue;
         }
 
-        int xpos = clamp(0, 19780, data[1] | data[2] << 8);
-        int ypos = clamp(0, 13442, data[3] | data[4] << 8);
-        int pressure = data[5] | data[6] << 8;
-        int touch = data[7] & 0x01;
-        int stylus = (data[7] & 0x02) >> 1;
+        int xpos = data[1] & 0xff;
+        xpos += (data[2] & 0xff) << 8;
+        int ypos = data[3] & 0xff;
+        ypos += (data[4] & 0xff) << 8;
+        int pressure = data[5] & 0xff;
+        pressure += (data[5] & 0xff) << 8;
+        int flags = data[7];
+        int touch = (flags & STYLUS_TOUCH_FLAG) == STYLUS_TOUCH_FLAG;
+        int hover = (flags & STYLUS_HOVER_FLAG) == STYLUS_HOVER_FLAG;
+        int btn = (flags & STYLUS_BTN_FLAG) == STYLUS_BTN_FLAG;
 
-        libevdev_uinput_write_event(uidev, EV_ABS, ABS_PRESSURE, pressure);
+        // printf("hover: %d; touch: %d; x: %d; y: %d\n", hover || touch, touch, xpos, ypos);
+
+        libevdev_uinput_write_event(uidev, EV_KEY, BTN_TOUCH, touch);
+        libevdev_uinput_write_event(uidev, EV_KEY, BTN_TOOL_PEN, touch || hover);
         libevdev_uinput_write_event(uidev, EV_ABS, ABS_X, xpos);
         libevdev_uinput_write_event(uidev, EV_ABS, ABS_Y, ypos);
-        libevdev_uinput_write_event(uidev, EV_KEY, BTN_TOUCH, touch);
-        libevdev_uinput_write_event(uidev, EV_KEY, BTN_STYLUS2, stylus);
+        libevdev_uinput_write_event(uidev, EV_ABS, ABS_PRESSURE, pressure);
+        libevdev_uinput_write_event(uidev, EV_KEY, BTN_STYLUS, btn);
         libevdev_uinput_write_event(uidev, EV_SYN, SYN_REPORT, 0);
     }
 
