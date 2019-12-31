@@ -14,6 +14,7 @@
 #define STYLUS_TOUCH_FLAG 0x01
 #define MAX_X 19780
 #define MAX_Y 13442
+#define MAX_P 1023
 
 uint8_t should_exit = 0;
 
@@ -104,7 +105,7 @@ int main() {
     struct input_absinfo abs_info_p;
     abs_info_p.value = 0;
     abs_info_p.minimum = 0;
-    abs_info_p.maximum = 255;
+    abs_info_p.maximum = MAX_P;
     abs_info_p.fuzz = 0;
     abs_info_p.flat = 0;
     abs_info_p.resolution = 1;
@@ -143,7 +144,7 @@ int main() {
         int ypos = data[3] & 0xff;
         ypos += (data[4] & 0xff) << 8;
         int pressure = data[5] & 0xff;
-        pressure += (data[5] & 0xff) << 8;
+        pressure += (data[6] & 0xff) << 8;
         int flags = data[7];
         int touch = (flags & STYLUS_TOUCH_FLAG) == STYLUS_TOUCH_FLAG;
         int hover = (flags & STYLUS_HOVER_FLAG) == STYLUS_HOVER_FLAG;
